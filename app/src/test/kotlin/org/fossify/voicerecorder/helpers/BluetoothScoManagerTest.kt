@@ -1,19 +1,17 @@
 package org.fossify.voicerecorder.helpers
 
+import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
-import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
-import org.mockito.Mockito.never
-import org.mockito.Mockito.verify
 import org.mockito.kotlin.whenever
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -25,8 +23,8 @@ class BluetoothScoManagerTest {
 
     @Before
     fun setUp() {
-        audioManager = ApplicationProvider.getApplicationContext<android.app.Application>()
-            .getSystemService(AudioManager::class.java)
+        audioManager = RuntimeEnvironment.getApplication()
+            .getSystemService(Context.AUDIO_SERVICE) as AudioManager
         scoManager = BluetoothScoManager(audioManager)
     }
 
@@ -106,7 +104,6 @@ class BluetoothScoManagerTest {
 
     @Test
     fun `start sets bluetoothScoOn on AudioManager`() {
-        val shadow = shadowOf(audioManager)
         scoManager.start()
         assertTrue(audioManager.isBluetoothScoOn)
     }
