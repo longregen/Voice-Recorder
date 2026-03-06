@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
@@ -11,6 +13,7 @@ import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.commons.compose.extensions.getActivity
 import org.fossify.commons.dialogs.ConfirmationDialog
 import org.fossify.commons.dialogs.PermissionRequiredDialog
+import org.fossify.commons.dialogs.RadioGroupDialog
 import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.getColoredDrawableWithColor
@@ -21,12 +24,14 @@ import org.fossify.commons.extensions.getProperTextColor
 import org.fossify.commons.extensions.openNotificationSettings
 import org.fossify.commons.extensions.setDebouncedClickListener
 import org.fossify.commons.extensions.toast
+import org.fossify.commons.models.RadioItem
 import org.fossify.voicerecorder.R
 import org.fossify.voicerecorder.databinding.FragmentRecorderBinding
 import org.fossify.voicerecorder.extensions.config
 import org.fossify.voicerecorder.extensions.ensureStoragePermission
 import org.fossify.voicerecorder.extensions.setKeepScreenAwake
 import org.fossify.voicerecorder.helpers.CANCEL_RECORDING
+import org.fossify.voicerecorder.helpers.EXTRA_PREFERRED_AUDIO_DEVICE_ID
 import org.fossify.voicerecorder.helpers.GET_RECORDER_INFO
 import org.fossify.voicerecorder.helpers.RECORDING_PAUSED
 import org.fossify.voicerecorder.helpers.RECORDING_RUNNING
@@ -48,6 +53,7 @@ class RecorderFragment(
     private var status = RECORDING_STOPPED
     private var pauseBlinkTimer = Timer()
     private var bus: EventBus? = null
+    private var selectedAudioDeviceId = -1
     private lateinit var binding: FragmentRecorderBinding
 
     override fun onFinishInflate() {
@@ -62,6 +68,7 @@ class RecorderFragment(
         }
 
         refreshView()
+        updateMicrophoneLabel()
     }
 
     override fun onDestroy() {
@@ -76,6 +83,7 @@ class RecorderFragment(
         bus = EventBus.getDefault()
         bus!!.register(this)
 
+        setupMicrophoneSelector()
         updateRecordingDuration(0)
         binding.toggleRecordingButton.setDebouncedClickListener {
             val activity = context as? BaseSimpleActivity
@@ -123,6 +131,9 @@ class RecorderFragment(
         binding.saveRecordingButton.applyColorFilter(properTextColor)
         binding.recorderVisualizer.chunkColor = properPrimaryColor
         binding.recordingDuration.setTextColor(properTextColor)
+        binding.microphoneSelectorIcon.applyColorFilter(properTextColor)
+        binding.microphoneSelectorLabel.setTextColor(properTextColor)
+        binding.microphoneSelectorChevron.applyColorFilter(properTextColor)
     }
 
     private fun updateRecordingDuration(duration: Int) {
@@ -163,7 +174,68 @@ class RecorderFragment(
 
     private fun startRecording() {
         Intent(context, RecorderService::class.java).apply {
+            if (selectedAudioDeviceId != -1) {
+                putExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, selectedAudioDeviceId)
+            }
             context.startService(this)
+        }
+    }
+
+    private fun setupMicrophoneSelector() {
+        updateMicrophoneLabel()
+        binding.microphoneSelectorHolder.setDebouncedClickListener {
+            showMicrophonePickerDialog()
+        }
+    }
+
+    private fun getAudioInputDevices(): List<AudioDeviceInfo> {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS).toList()
+    }
+
+    private fun getDeviceDisplayName(device: AudioDeviceInfo): String {
+        val productName = device.productName?.toString()?.takeIf { it.isNotBlank() }
+        val typeName = when (device.type) {
+            AudioDeviceInfo.TYPE_BUILTIN_MIC -> context.getString(R.string.mic_type_builtin)
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> context.getString(R.string.mic_type_bluetooth)
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> context.getString(R.string.mic_type_bluetooth)
+            AudioDeviceInfo.TYPE_WIRED_HEADSET -> context.getString(R.string.mic_type_wired_headset)
+            AudioDeviceInfo.TYPE_USB_HEADSET -> context.getString(R.string.mic_type_usb)
+            AudioDeviceInfo.TYPE_USB_DEVICE -> context.getString(R.string.mic_type_usb)
+            AudioDeviceInfo.TYPE_TELEPHONY -> context.getString(R.string.mic_type_telephony)
+            else -> context.getString(R.string.mic_type_external)
+        }
+        return if (productName != null && productName != typeName) {
+            "$productName ($typeName)"
+        } else {
+            typeName
+        }
+    }
+
+    private fun updateMicrophoneLabel() {
+        val devices = getAudioInputDevices()
+        val selectedDevice = devices.firstOrNull { it.id == selectedAudioDeviceId }
+        binding.microphoneSelectorLabel.text = if (selectedDevice != null) {
+            getDeviceDisplayName(selectedDevice)
+        } else {
+            context.getString(R.string.default_microphone)
+        }
+    }
+
+    private fun showMicrophonePickerDialog() {
+        val activity = context as? BaseSimpleActivity ?: return
+        val devices = getAudioInputDevices()
+
+        val items = arrayListOf(
+            RadioItem(-1, context.getString(R.string.default_microphone))
+        )
+        devices.forEach { device ->
+            items.add(RadioItem(device.id, getDeviceDisplayName(device)))
+        }
+
+        RadioGroupDialog(activity, items, selectedAudioDeviceId) {
+            selectedAudioDeviceId = it as Int
+            updateMicrophoneLabel()
         }
     }
 
@@ -212,6 +284,7 @@ class RecorderFragment(
         binding.toggleRecordingButton.setImageDrawable(getToggleButtonIcon())
         binding.saveRecordingButton.beVisibleIf(status != RECORDING_STOPPED)
         binding.cancelRecordingButton.beVisibleIf(status != RECORDING_STOPPED)
+        binding.microphoneSelectorHolder.beVisibleIf(status == RECORDING_STOPPED)
         pauseBlinkTimer.cancel()
 
         when (status) {

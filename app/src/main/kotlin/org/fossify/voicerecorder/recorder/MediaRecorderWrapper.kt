@@ -2,6 +2,7 @@ package org.fossify.voicerecorder.recorder
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.media.AudioDeviceInfo
 import android.media.MediaRecorder
 import android.os.ParcelFileDescriptor
 import org.fossify.voicerecorder.extensions.config
@@ -24,6 +25,10 @@ class MediaRecorderWrapper(val context: Context) : Recorder {
     override fun setOutputFile(parcelFileDescriptor: ParcelFileDescriptor) {
         val pFD = ParcelFileDescriptor.dup(parcelFileDescriptor.fileDescriptor)
         recorder.setOutputFile(pFD.fileDescriptor)
+    }
+
+    override fun setPreferredDevice(device: AudioDeviceInfo?) {
+        recorder.setPreferredDevice(device)
     }
 
     override fun prepare() {
