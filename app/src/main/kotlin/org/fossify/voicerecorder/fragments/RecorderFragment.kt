@@ -304,6 +304,7 @@ class RecorderFragment(
                 binding.toggleRecordingButton.alpha = 1f
                 binding.recorderVisualizer.recreate()
                 binding.recordingDuration.text = null
+                context.getActivity().setKeepScreenAwake(false)
             }
         }
     }

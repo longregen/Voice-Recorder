@@ -88,7 +88,6 @@ class RecorderService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopRecording()
-        isRunning = false
         updateWidgets(false)
     }
 
@@ -97,7 +96,7 @@ class RecorderService : Service() {
     private fun startRecording(intent: Intent) {
         isRunning = true
         updateWidgets(true)
-        if (status == RECORDING_RUNNING) {
+        if (status == RECORDING_RUNNING || status == RECORDING_PAUSED) {
             return
         }
 
@@ -166,6 +165,8 @@ class RecorderService : Service() {
         durationTimer.cancel()
         amplitudeTimer.cancel()
         status = RECORDING_STOPPED
+        isRunning = false
+        broadcastStatus()
 
         recorder?.apply {
             try {

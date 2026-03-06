@@ -5,9 +5,14 @@ import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.MediaRecorder
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import org.fossify.voicerecorder.extensions.config
 
 class MediaRecorderWrapper(val context: Context) : Recorder {
+
+    companion object {
+        private const val TAG = "MediaRecorderWrapper"
+    }
 
     @Suppress("DEPRECATION")
     private var recorder = MediaRecorder().apply {
@@ -16,6 +21,12 @@ class MediaRecorderWrapper(val context: Context) : Recorder {
         setAudioEncoder(context.config.getAudioEncoder())
         setAudioEncodingBitRate(context.config.bitrate)
         setAudioSamplingRate(context.config.samplingRate)
+        setOnErrorListener { _, what, extra ->
+            Log.e(TAG, "MediaRecorder error: what=$what extra=$extra")
+        }
+        setOnInfoListener { _, what, extra ->
+            Log.i(TAG, "MediaRecorder info: what=$what extra=$extra")
+        }
     }
 
     override fun setOutputFile(path: String) {
