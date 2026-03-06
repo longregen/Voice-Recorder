@@ -6,7 +6,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.IBinder
@@ -33,6 +35,7 @@ import org.fossify.voicerecorder.extensions.getFormattedFilename
 import org.fossify.voicerecorder.extensions.updateWidgets
 import org.fossify.voicerecorder.helpers.CANCEL_RECORDING
 import org.fossify.voicerecorder.helpers.EXTENSION_MP3
+import org.fossify.voicerecorder.helpers.EXTRA_PREFERRED_AUDIO_DEVICE_ID
 import org.fossify.voicerecorder.helpers.GET_RECORDER_INFO
 import org.fossify.voicerecorder.helpers.RECORDER_RUNNING_NOTIF_ID
 import org.fossify.voicerecorder.helpers.RECORDING_PAUSED
@@ -76,7 +79,7 @@ class RecorderService : Service() {
             STOP_AMPLITUDE_UPDATE -> amplitudeTimer.cancel()
             TOGGLE_PAUSE -> togglePause()
             CANCEL_RECORDING -> cancelRecording()
-            else -> startRecording()
+            else -> startRecording(intent)
         }
 
         return START_NOT_STICKY
@@ -91,7 +94,7 @@ class RecorderService : Service() {
 
     // mp4 output format with aac encoding should produce good enough m4a files according to https://stackoverflow.com/a/33054794/1967672
     @SuppressLint("DiscouragedApi")
-    private fun startRecording() {
+    private fun startRecording(intent: Intent) {
         isRunning = true
         updateWidgets(true)
         if (status == RECORDING_RUNNING) {
@@ -112,6 +115,14 @@ class RecorderService : Service() {
                 Mp3Recorder(this)
             } else {
                 MediaRecorderWrapper(this)
+            }
+
+            val preferredDeviceId = intent.getIntExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, -1)
+            if (preferredDeviceId != -1) {
+                val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val device = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                    .firstOrNull { it.id == preferredDeviceId }
+                recorder?.setPreferredDevice(device)
             }
 
             if (isRPlus()) {

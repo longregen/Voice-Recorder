@@ -2,6 +2,7 @@ package org.fossify.voicerecorder.recorder
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.os.ParcelFileDescriptor
@@ -44,6 +45,10 @@ class Mp3Recorder(val context: Context) : Recorder {
 
     override fun setOutputFile(path: String) {
         outputPath = path
+    }
+
+    override fun setPreferredDevice(device: AudioDeviceInfo?) {
+        audioRecord.setPreferredDevice(device)
     }
 
     override fun prepare() {}

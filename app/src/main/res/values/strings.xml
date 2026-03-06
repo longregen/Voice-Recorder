@@ -38,6 +38,15 @@
     <string name="microphone_mode_voice_performance">Voice performance (low-latency)</string>
     <string name="microphone_mode_voice_recognition">Voice recognition</string>
     <string name="microphone_mode_unprocessed">Unprocessed (raw)</string>
+    <!-- Microphone selector -->
+    <string name="select_microphone">Select microphone</string>
+    <string name="default_microphone">Default</string>
+    <string name="mic_type_builtin">Built-in microphone</string>
+    <string name="mic_type_bluetooth">Bluetooth</string>
+    <string name="mic_type_wired_headset">Wired headset</string>
+    <string name="mic_type_usb">USB</string>
+    <string name="mic_type_telephony">Telephony</string>
+    <string name="mic_type_external">External</string>
     <!-- FAQ -->
     <string name="faq_1_title">Can I hide the notification icon during recording?</string>
     <string name="faq_1_text">Well, it depends. While you use your device it is no longer possible to fully hide the notifications of apps like this.
