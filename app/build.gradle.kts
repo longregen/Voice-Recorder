@@ -115,6 +115,12 @@ android {
 
     namespace = project.property("APP_ID").toString()
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     lint {
         checkReleaseBuilds = false
         abortOnError = true
@@ -146,5 +152,9 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation(libs.tandroidlame)
     implementation(libs.autofittextview)
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.mockito.kotlin)
     detektPlugins(libs.compose.detekt)
 }

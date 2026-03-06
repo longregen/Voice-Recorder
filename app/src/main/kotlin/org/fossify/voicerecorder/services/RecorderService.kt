@@ -33,6 +33,7 @@ import org.fossify.voicerecorder.activities.SplashActivity
 import org.fossify.voicerecorder.extensions.config
 import org.fossify.voicerecorder.extensions.getFormattedFilename
 import org.fossify.voicerecorder.extensions.updateWidgets
+import org.fossify.voicerecorder.helpers.BluetoothScoManager
 import org.fossify.voicerecorder.helpers.CANCEL_RECORDING
 import org.fossify.voicerecorder.helpers.EXTENSION_MP3
 import org.fossify.voicerecorder.helpers.EXTRA_PREFERRED_AUDIO_DEVICE_ID
@@ -68,6 +69,7 @@ class RecorderService : Service() {
     private var durationTimer = Timer()
     private var amplitudeTimer = Timer()
     private var recorder: Recorder? = null
+    private var bluetoothScoManager: BluetoothScoManager? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -88,7 +90,6 @@ class RecorderService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopRecording()
-        isRunning = false
         updateWidgets(false)
     }
 
@@ -97,7 +98,7 @@ class RecorderService : Service() {
     private fun startRecording(intent: Intent) {
         isRunning = true
         updateWidgets(true)
-        if (status == RECORDING_RUNNING) {
+        if (status == RECORDING_RUNNING || status == RECORDING_PAUSED) {
             return
         }
 
@@ -120,8 +121,13 @@ class RecorderService : Service() {
             val preferredDeviceId = intent.getIntExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, -1)
             if (preferredDeviceId != -1) {
                 val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val scoManager = BluetoothScoManager(audioManager)
+                bluetoothScoManager = scoManager
                 val device = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
                     .firstOrNull { it.id == preferredDeviceId }
+                if (device != null && scoManager.isBluetoothDevice(device)) {
+                    scoManager.start()
+                }
                 recorder?.setPreferredDevice(device)
             }
 
@@ -166,6 +172,9 @@ class RecorderService : Service() {
         durationTimer.cancel()
         amplitudeTimer.cancel()
         status = RECORDING_STOPPED
+        isRunning = false
+        broadcastStatus()
+        bluetoothScoManager?.stop()
 
         recorder?.apply {
             try {
@@ -195,6 +204,7 @@ class RecorderService : Service() {
         durationTimer.cancel()
         amplitudeTimer.cancel()
         status = RECORDING_STOPPED
+        bluetoothScoManager?.stop()
 
         recorder?.apply {
             try {
