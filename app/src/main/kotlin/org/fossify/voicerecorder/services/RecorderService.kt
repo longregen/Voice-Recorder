@@ -68,6 +68,7 @@ class RecorderService : Service() {
     private var durationTimer = Timer()
     private var amplitudeTimer = Timer()
     private var recorder: Recorder? = null
+    private var isBluetoothScoActive = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -121,6 +122,9 @@ class RecorderService : Service() {
                 val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 val device = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
                     .firstOrNull { it.id == preferredDeviceId }
+                if (device != null && isBluetoothDevice(device)) {
+                    startBluetoothSco(audioManager)
+                }
                 recorder?.setPreferredDevice(device)
             }
 
@@ -167,6 +171,7 @@ class RecorderService : Service() {
         status = RECORDING_STOPPED
         isRunning = false
         broadcastStatus()
+        stopBluetoothSco()
 
         recorder?.apply {
             try {
@@ -196,6 +201,7 @@ class RecorderService : Service() {
         durationTimer.cancel()
         amplitudeTimer.cancel()
         status = RECORDING_STOPPED
+        stopBluetoothSco()
 
         recorder?.apply {
             try {
@@ -336,6 +342,27 @@ class RecorderService : Service() {
 
     private fun broadcastStatus() {
         EventBus.getDefault().post(Events.RecordingStatus(status))
+    }
+
+    private fun isBluetoothDevice(device: AudioDeviceInfo): Boolean {
+        return device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+            device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+    }
+
+    @Suppress("DEPRECATION")
+    private fun startBluetoothSco(audioManager: AudioManager) {
+        audioManager.startBluetoothSco()
+        audioManager.isBluetoothScoOn = true
+        isBluetoothScoActive = true
+    }
+
+    @Suppress("DEPRECATION")
+    private fun stopBluetoothSco() {
+        if (!isBluetoothScoActive) return
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.isBluetoothScoOn = false
+        audioManager.stopBluetoothSco()
+        isBluetoothScoActive = false
     }
 
     private fun recordMp3(): Boolean {
