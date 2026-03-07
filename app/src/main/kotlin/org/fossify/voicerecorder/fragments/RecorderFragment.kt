@@ -1,8 +1,10 @@
 package org.fossify.voicerecorder.fragments
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -10,11 +12,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
+import android.view.View
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.commons.compose.extensions.getActivity
 import org.fossify.commons.dialogs.ConfirmationDialog
 import org.fossify.commons.dialogs.PermissionRequiredDialog
-import org.fossify.commons.dialogs.RadioGroupDialog
 import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.getColoredDrawableWithColor
@@ -25,12 +29,12 @@ import org.fossify.commons.extensions.getProperTextColor
 import org.fossify.commons.extensions.openNotificationSettings
 import org.fossify.commons.extensions.setDebouncedClickListener
 import org.fossify.commons.extensions.toast
-import org.fossify.commons.models.RadioItem
 import org.fossify.voicerecorder.R
 import org.fossify.voicerecorder.databinding.FragmentRecorderBinding
 import org.fossify.voicerecorder.extensions.config
 import org.fossify.voicerecorder.extensions.ensureStoragePermission
 import org.fossify.voicerecorder.extensions.setKeepScreenAwake
+import org.fossify.voicerecorder.helpers.BluetoothScoManager
 import org.fossify.voicerecorder.helpers.CANCEL_RECORDING
 import org.fossify.voicerecorder.helpers.EXTRA_PREFERRED_AUDIO_DEVICE_ID
 import org.fossify.voicerecorder.helpers.GET_RECORDER_INFO
@@ -54,7 +58,8 @@ class RecorderFragment(
     private var status = RECORDING_STOPPED
     private var pauseBlinkTimer = Timer()
     private var bus: EventBus? = null
-    private var selectedAudioDeviceId = -1
+    private var bluetoothSelected = false
+    private var pendingBluetoothSelection = false
     private lateinit var binding: FragmentRecorderBinding
 
     override fun onFinishInflate() {
@@ -69,7 +74,15 @@ class RecorderFragment(
         }
 
         refreshView()
-        updateMicrophoneLabel()
+        refreshBluetoothVisibility()
+
+        if (pendingBluetoothSelection) {
+            pendingBluetoothSelection = false
+            if (hasBluetoothPermission() && findBluetoothInputDevice() != null) {
+                bluetoothSelected = true
+                updateTabColors()
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -84,7 +97,7 @@ class RecorderFragment(
         bus = EventBus.getDefault()
         bus!!.register(this)
 
-        setupMicrophoneSelector()
+        setupTabSelector()
         updateRecordingDuration(0)
         binding.toggleRecordingButton.setDebouncedClickListener {
             val activity = context as? BaseSimpleActivity
@@ -132,9 +145,27 @@ class RecorderFragment(
         binding.saveRecordingButton.applyColorFilter(properTextColor)
         binding.recorderVisualizer.chunkColor = properPrimaryColor
         binding.recordingDuration.setTextColor(properTextColor)
-        binding.microphoneSelectorIcon.applyColorFilter(properTextColor)
-        binding.microphoneSelectorLabel.setTextColor(properTextColor)
-        binding.microphoneSelectorChevron.applyColorFilter(properTextColor)
+        updateTabColors()
+    }
+
+    private fun updateTabColors() {
+        val properTextColor = context.getProperTextColor()
+        val properPrimaryColor = context.getProperPrimaryColor()
+        val contrastColor = properPrimaryColor.getContrastColor()
+
+        if (bluetoothSelected) {
+            binding.tabDefault.setBackgroundResource(android.R.color.transparent)
+            binding.tabDefault.setTextColor(properTextColor)
+            binding.tabBluetooth.setBackgroundResource(R.drawable.tab_selector_selected)
+            binding.tabBluetooth.background.applyColorFilter(properPrimaryColor)
+            binding.tabBluetooth.setTextColor(contrastColor)
+        } else {
+            binding.tabDefault.setBackgroundResource(R.drawable.tab_selector_selected)
+            binding.tabDefault.background.applyColorFilter(properPrimaryColor)
+            binding.tabDefault.setTextColor(contrastColor)
+            binding.tabBluetooth.setBackgroundResource(android.R.color.transparent)
+            binding.tabBluetooth.setTextColor(properTextColor)
+        }
     }
 
     private fun updateRecordingDuration(duration: Int) {
@@ -175,77 +206,74 @@ class RecorderFragment(
 
     private fun startRecording() {
         Intent(context, RecorderService::class.java).apply {
-            if (selectedAudioDeviceId != -1) {
-                putExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, selectedAudioDeviceId)
+            if (bluetoothSelected) {
+                val device = findBluetoothInputDevice()
+                if (device != null) {
+                    putExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, device.id)
+                }
             }
             context.startForegroundService(this)
         }
     }
 
-    private fun setupMicrophoneSelector() {
-        updateMicrophoneLabel()
-        binding.microphoneSelectorHolder.setDebouncedClickListener {
-            showMicrophonePickerDialog()
+    private fun setupTabSelector() {
+        refreshBluetoothVisibility()
+
+        binding.tabDefault.setDebouncedClickListener {
+            if (bluetoothSelected) {
+                bluetoothSelected = false
+                updateTabColors()
+            }
         }
-    }
 
-    private fun getAudioInputDevices(): List<AudioDeviceInfo> {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        return audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS).toList()
-    }
-
-    private fun getDeviceDisplayName(device: AudioDeviceInfo): String {
-        val productName = device.productName?.toString()?.takeIf { it.isNotBlank() }
-        val typeName = when (device.type) {
-            AudioDeviceInfo.TYPE_BUILTIN_MIC -> context.getString(R.string.mic_type_builtin)
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> context.getString(R.string.mic_type_bluetooth)
-            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> context.getString(R.string.mic_type_bluetooth)
-            AudioDeviceInfo.TYPE_WIRED_HEADSET -> context.getString(R.string.mic_type_wired_headset)
-            AudioDeviceInfo.TYPE_USB_HEADSET -> context.getString(R.string.mic_type_usb)
-            AudioDeviceInfo.TYPE_USB_DEVICE -> context.getString(R.string.mic_type_usb)
-            AudioDeviceInfo.TYPE_TELEPHONY -> context.getString(R.string.mic_type_telephony)
-            else -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    device.type == AudioDeviceInfo.TYPE_BLE_HEADSET
-                ) {
-                    context.getString(R.string.mic_type_bluetooth)
-                } else {
-                    context.getString(R.string.mic_type_external)
+        binding.tabBluetooth.setDebouncedClickListener {
+            if (!bluetoothSelected) {
+                ensureBluetoothPermission {
+                    bluetoothSelected = true
+                    updateTabColors()
                 }
             }
         }
-        return if (productName != null && productName != typeName) {
-            "$productName ($typeName)"
-        } else {
-            typeName
+    }
+
+    private fun refreshBluetoothVisibility() {
+        val hasBluetooth = hasBluetoothPermission() && findBluetoothInputDevice() != null
+        binding.microphoneSelectorHolder.visibility =
+            if (hasBluetooth) View.VISIBLE else View.GONE
+        if (!hasBluetooth && bluetoothSelected) {
+            bluetoothSelected = false
+            updateTabColors()
         }
     }
 
-    private fun updateMicrophoneLabel() {
-        val devices = getAudioInputDevices()
-        val selectedDevice = devices.firstOrNull { it.id == selectedAudioDeviceId }
-        binding.microphoneSelectorLabel.text = if (selectedDevice != null) {
-            getDeviceDisplayName(selectedDevice)
-        } else {
-            context.getString(R.string.default_microphone)
-        }
+    private fun hasBluetoothPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun showMicrophonePickerDialog() {
+    private fun findBluetoothInputDevice(): AudioDeviceInfo? {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val scoManager = BluetoothScoManager(audioManager)
+        return audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+            .firstOrNull { scoManager.isBluetoothDevice(it) }
+    }
+
+    @SuppressLint("InlinedApi")
+    private fun ensureBluetoothPermission(callback: () -> Unit) {
+        if (hasBluetoothPermission()) {
+            callback()
+            return
+        }
+
         val activity = context as? BaseSimpleActivity ?: return
-        val devices = getAudioInputDevices()
-
-        val items = arrayListOf(
-            RadioItem(-1, context.getString(R.string.default_microphone))
+        pendingBluetoothSelection = true
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+            BLUETOOTH_PERMISSION_REQUEST_CODE
         )
-        devices.forEach { device ->
-            items.add(RadioItem(device.id, getDeviceDisplayName(device)))
-        }
-
-        RadioGroupDialog(activity, items, selectedAudioDeviceId) {
-            selectedAudioDeviceId = it as Int
-            updateMicrophoneLabel()
-        }
     }
 
     private fun showCancelRecordingDialog() {
@@ -293,7 +321,11 @@ class RecorderFragment(
         binding.toggleRecordingButton.setImageDrawable(getToggleButtonIcon())
         binding.saveRecordingButton.beVisibleIf(status != RECORDING_STOPPED)
         binding.cancelRecordingButton.beVisibleIf(status != RECORDING_STOPPED)
-        binding.microphoneSelectorHolder.beVisibleIf(status == RECORDING_STOPPED)
+        if (status == RECORDING_STOPPED) {
+            refreshBluetoothVisibility()
+        } else {
+            binding.microphoneSelectorHolder.visibility = View.GONE
+        }
         pauseBlinkTimer.cancel()
 
         when (status) {
@@ -338,5 +370,9 @@ class RecorderFragment(
         if (status == RECORDING_RUNNING) {
             binding.recorderVisualizer.update(amplitude)
         }
+    }
+
+    companion object {
+        private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 100
     }
 }
