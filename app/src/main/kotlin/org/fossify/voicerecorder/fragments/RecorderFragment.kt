@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
+import android.util.Log
 import android.view.View
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -208,9 +209,12 @@ class RecorderFragment(
         Intent(context, RecorderService::class.java).apply {
             if (bluetoothSelected) {
                 val device = findBluetoothInputDevice()
+                Log.d(TAG, "startRecording: bluetoothSelected=true, device=${device?.let { "id=${it.id} type=${it.type}" } ?: "null"}")
                 if (device != null) {
                     putExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, device.id)
                 }
+            } else {
+                Log.d(TAG, "startRecording: using default microphone")
             }
             context.startForegroundService(this)
         }
@@ -237,7 +241,15 @@ class RecorderFragment(
     }
 
     private fun refreshBluetoothVisibility() {
-        val hasBluetooth = hasBluetoothPermission() && findBluetoothInputDevice() != null
+        val hasPerm = hasBluetoothPermission()
+        val btDevice = findBluetoothInputDevice()
+        val hasBluetooth = hasPerm && btDevice != null
+        Log.d(TAG, "refreshBluetoothVisibility: hasPerm=$hasPerm btDevice=${btDevice?.let { "id=${it.id} type=${it.type} name=${it.productName}" } ?: "null"} -> visible=$hasBluetooth")
+
+        // Also log all available devices for debugging
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        BluetoothScoManager(audioManager).logAvailableDevices()
+
         binding.microphoneSelectorHolder.visibility =
             if (hasBluetooth) View.VISIBLE else View.GONE
         if (!hasBluetooth && bluetoothSelected) {
@@ -373,6 +385,7 @@ class RecorderFragment(
     }
 
     companion object {
+        private const val TAG = "RecorderFragment"
         private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 100
     }
 }

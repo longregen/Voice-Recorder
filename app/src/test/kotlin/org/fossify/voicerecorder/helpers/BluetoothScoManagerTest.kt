@@ -128,6 +128,10 @@ class BluetoothScoManagerTest {
     private fun createMockDevice(type: Int): AudioDeviceInfo {
         val device = mock<AudioDeviceInfo>()
         whenever(device.type).thenReturn(type)
+        whenever(device.id).thenReturn(0)
+        whenever(device.productName).thenReturn("mock-device")
+        whenever(device.isSource).thenReturn(true)
+        whenever(device.isSink).thenReturn(false)
         return device
     }
 }

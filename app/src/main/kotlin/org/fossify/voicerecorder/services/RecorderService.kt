@@ -15,6 +15,7 @@ import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.IBinder
 import android.provider.DocumentsContract
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import org.fossify.commons.extensions.createDocumentUriUsingFirstParentTreeUri
@@ -57,6 +58,7 @@ import java.util.TimerTask
 
 class RecorderService : Service() {
     companion object {
+        private const val TAG = "RecorderService"
         var isRunning = false
 
         private const val AMPLITUDE_UPDATE_MS = 75L
@@ -115,73 +117,93 @@ class RecorderService : Service() {
 
         try {
             val preferredDeviceId = intent.getIntExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, -1)
-            var audioSourceOverride: Int? = null
+            Log.d(TAG, "startRecording: preferredDeviceId=$preferredDeviceId")
 
             if (preferredDeviceId != -1) {
                 val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 val scoManager = BluetoothScoManager(audioManager)
                 bluetoothScoManager = scoManager
+                scoManager.logAvailableDevices()
+
                 val device = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
                     .firstOrNull { it.id == preferredDeviceId }
+
                 if (device != null && scoManager.isBluetoothDevice(device)) {
-                    audioSourceOverride = MediaRecorder.AudioSource.VOICE_COMMUNICATION
-                    scoManager.start(device)
-                }
-
-                recorder = if (recordMp3()) {
-                    Mp3Recorder(this, audioSourceOverride)
+                    Log.d(TAG, "startRecording: found BT device id=${device.id}, starting SCO and waiting for routing")
+                    scoManager.start(device) {
+                        Log.d(TAG, "startRecording: BT routing ready, creating recorder")
+                        try {
+                            createAndStartRecorder(
+                                audioSourceOverride = MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                                preferredDevice = device
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "startRecording: failed after BT routing", e)
+                            showErrorToast(e)
+                            stopRecording()
+                        }
+                    }
+                    return
                 } else {
-                    MediaRecorderWrapper(this, audioSourceOverride)
-                }
-                recorder?.setPreferredDevice(device)
-            } else {
-                recorder = if (recordMp3()) {
-                    Mp3Recorder(this)
-                } else {
-                    MediaRecorderWrapper(this)
+                    Log.w(TAG, "startRecording: BT device not found or not BT (device=${device?.let { "id=${it.id} type=${it.type}" } ?: "null"}), falling back to default")
                 }
             }
 
-            if (isRPlus()) {
-                val fileUri = createDocumentUriUsingFirstParentTreeUri(recordingPath)
-                createSAFFileSdk30(recordingPath)
-                resultUri = fileUri
-                contentResolver.openFileDescriptor(fileUri, "rw")!!
-                    .use { recorder?.setOutputFile(it) }
-            } else if (isPathOnSD(recordingPath)) {
-                var document = getDocumentFile(recordingPath.getParentPath())
-                document = document?.createFile("", recordingPath.getFilenameFromPath())
-                check(document != null) { "Failed to create document on SD Card" }
-                resultUri = document.uri
-                contentResolver.openFileDescriptor(document.uri, "rw")!!
-                    .use { recorder?.setOutputFile(it) }
-            } else {
-                recorder?.setOutputFile(recordingPath)
-                resultUri = FileProvider.getUriForFile(
-                    this, "${BuildConfig.APPLICATION_ID}.provider", File(recordingPath)
-                )
-            }
-
-            startForeground(
-                RECORDER_RUNNING_NOTIF_ID,
-                showNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            )
-
-            recorder?.prepare()
-            recorder?.start()
-            duration = 0
-            status = RECORDING_RUNNING
-            broadcastRecorderInfo()
-
-            durationTimer = Timer()
-            durationTimer.scheduleAtFixedRate(getDurationUpdateTask(), 1000, 1000)
-
-            startAmplitudeUpdates()
+            // Default (non-bluetooth) path
+            createAndStartRecorder(audioSourceOverride = null, preferredDevice = null)
         } catch (e: Exception) {
+            Log.e(TAG, "startRecording: failed", e)
             showErrorToast(e)
             stopRecording()
         }
+    }
+
+    private fun createAndStartRecorder(audioSourceOverride: Int?, preferredDevice: android.media.AudioDeviceInfo?) {
+        Log.d(TAG, "createAndStartRecorder: audioSource=${audioSourceOverride ?: "default"} preferredDevice=${preferredDevice?.id}")
+        recorder = if (recordMp3()) {
+            Mp3Recorder(this, audioSourceOverride)
+        } else {
+            MediaRecorderWrapper(this, audioSourceOverride)
+        }
+        recorder?.setPreferredDevice(preferredDevice)
+
+        if (isRPlus()) {
+            val fileUri = createDocumentUriUsingFirstParentTreeUri(recordingPath)
+            createSAFFileSdk30(recordingPath)
+            resultUri = fileUri
+            contentResolver.openFileDescriptor(fileUri, "rw")!!
+                .use { recorder?.setOutputFile(it) }
+        } else if (isPathOnSD(recordingPath)) {
+            var document = getDocumentFile(recordingPath.getParentPath())
+            document = document?.createFile("", recordingPath.getFilenameFromPath())
+            check(document != null) { "Failed to create document on SD Card" }
+            resultUri = document.uri
+            contentResolver.openFileDescriptor(document.uri, "rw")!!
+                .use { recorder?.setOutputFile(it) }
+        } else {
+            recorder?.setOutputFile(recordingPath)
+            resultUri = FileProvider.getUriForFile(
+                this, "${BuildConfig.APPLICATION_ID}.provider", File(recordingPath)
+            )
+        }
+
+        startForeground(
+            RECORDER_RUNNING_NOTIF_ID,
+            showNotification(),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        )
+
+        recorder?.prepare()
+        recorder?.start()
+        Log.d(TAG, "createAndStartRecorder: recording started successfully")
+        duration = 0
+        status = RECORDING_RUNNING
+        broadcastRecorderInfo()
+
+        durationTimer = Timer()
+        durationTimer.scheduleAtFixedRate(getDurationUpdateTask(), 1000, 1000)
+
+        startAmplitudeUpdates()
     }
 
     private fun stopRecording() {
