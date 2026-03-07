@@ -2,6 +2,7 @@ package org.fossify.voicerecorder.helpers
 
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.Build
 
 class BluetoothScoManager(private val audioManager: AudioManager) {
 
@@ -10,22 +11,34 @@ class BluetoothScoManager(private val audioManager: AudioManager) {
 
     fun isBluetoothDevice(device: AudioDeviceInfo): Boolean {
         return device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-            device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+            device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                device.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
     }
 
-    @Suppress("DEPRECATION")
-    fun start() {
+    fun start(device: AudioDeviceInfo? = null) {
         if (isActive) return
-        audioManager.startBluetoothSco()
-        audioManager.isBluetoothScoOn = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            device?.let { audioManager.setCommunicationDevice(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.startBluetoothSco()
+            @Suppress("DEPRECATION")
+            audioManager.isBluetoothScoOn = true
+        }
         isActive = true
     }
 
-    @Suppress("DEPRECATION")
     fun stop() {
         if (!isActive) return
-        audioManager.isBluetoothScoOn = false
-        audioManager.stopBluetoothSco()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager.clearCommunicationDevice()
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.isBluetoothScoOn = false
+            @Suppress("DEPRECATION")
+            audioManager.stopBluetoothSco()
+        }
         isActive = false
     }
 }

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.drawable.Drawable
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
@@ -203,7 +204,15 @@ class RecorderFragment(
             AudioDeviceInfo.TYPE_USB_HEADSET -> context.getString(R.string.mic_type_usb)
             AudioDeviceInfo.TYPE_USB_DEVICE -> context.getString(R.string.mic_type_usb)
             AudioDeviceInfo.TYPE_TELEPHONY -> context.getString(R.string.mic_type_telephony)
-            else -> context.getString(R.string.mic_type_external)
+            else -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    device.type == AudioDeviceInfo.TYPE_BLE_HEADSET
+                ) {
+                    context.getString(R.string.mic_type_bluetooth)
+                } else {
+                    context.getString(R.string.mic_type_external)
+                }
+            }
         }
         return if (productName != null && productName != typeName) {
             "$productName ($typeName)"

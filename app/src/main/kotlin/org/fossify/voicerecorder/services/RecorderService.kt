@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.media.AudioManager
 import android.media.MediaScannerConnection
 import android.net.Uri
@@ -126,7 +127,7 @@ class RecorderService : Service() {
                 val device = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
                     .firstOrNull { it.id == preferredDeviceId }
                 if (device != null && scoManager.isBluetoothDevice(device)) {
-                    scoManager.start()
+                    scoManager.start(device)
                 }
                 recorder?.setPreferredDevice(device)
             }
@@ -156,7 +157,11 @@ class RecorderService : Service() {
             duration = 0
             status = RECORDING_RUNNING
             broadcastRecorderInfo()
-            startForeground(RECORDER_RUNNING_NOTIF_ID, showNotification())
+            startForeground(
+                RECORDER_RUNNING_NOTIF_ID,
+                showNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
 
             durationTimer = Timer()
             durationTimer.scheduleAtFixedRate(getDurationUpdateTask(), 1000, 1000)
@@ -250,7 +255,11 @@ class RecorderService : Service() {
                 status = RECORDING_RUNNING
             }
             broadcastStatus()
-            startForeground(RECORDER_RUNNING_NOTIF_ID, showNotification())
+            startForeground(
+                RECORDER_RUNNING_NOTIF_ID,
+                showNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
         } catch (e: Exception) {
             showErrorToast(e)
         }

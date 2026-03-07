@@ -41,6 +41,12 @@ class BluetoothScoManagerTest {
     }
 
     @Test
+    fun `isBluetoothDevice returns true for BLE headset`() {
+        val device = createMockDevice(AudioDeviceInfo.TYPE_BLE_HEADSET)
+        assertTrue(scoManager.isBluetoothDevice(device))
+    }
+
+    @Test
     fun `isBluetoothDevice returns false for builtin mic`() {
         val device = createMockDevice(AudioDeviceInfo.TYPE_BUILTIN_MIC)
         assertFalse(scoManager.isBluetoothDevice(device))
@@ -59,14 +65,14 @@ class BluetoothScoManagerTest {
     }
 
     @Test
-    fun `start activates SCO and sets isActive`() {
+    fun `start activates and sets isActive`() {
         assertFalse(scoManager.isActive)
         scoManager.start()
         assertTrue(scoManager.isActive)
     }
 
     @Test
-    fun `stop deactivates SCO and clears isActive`() {
+    fun `stop deactivates and clears isActive`() {
         scoManager.start()
         assertTrue(scoManager.isActive)
 
@@ -100,21 +106,6 @@ class BluetoothScoManagerTest {
 
         scoManager.start()
         assertTrue(scoManager.isActive)
-    }
-
-    @Test
-    fun `start sets bluetoothScoOn on AudioManager`() {
-        scoManager.start()
-        assertTrue(audioManager.isBluetoothScoOn)
-    }
-
-    @Test
-    fun `stop clears bluetoothScoOn on AudioManager`() {
-        scoManager.start()
-        assertTrue(audioManager.isBluetoothScoOn)
-
-        scoManager.stop()
-        assertFalse(audioManager.isBluetoothScoOn)
     }
 
     private fun createMockDevice(type: Int): AudioDeviceInfo {
