@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
+import android.media.MediaRecorder
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.IBinder
@@ -113,13 +114,9 @@ class RecorderService : Service() {
         resultUri = null
 
         try {
-            recorder = if (recordMp3()) {
-                Mp3Recorder(this)
-            } else {
-                MediaRecorderWrapper(this)
-            }
-
             val preferredDeviceId = intent.getIntExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, -1)
+            var audioSourceOverride: Int? = null
+
             if (preferredDeviceId != -1) {
                 val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 val scoManager = BluetoothScoManager(audioManager)
@@ -127,9 +124,22 @@ class RecorderService : Service() {
                 val device = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
                     .firstOrNull { it.id == preferredDeviceId }
                 if (device != null && scoManager.isBluetoothDevice(device)) {
+                    audioSourceOverride = MediaRecorder.AudioSource.VOICE_COMMUNICATION
                     scoManager.start(device)
                 }
+
+                recorder = if (recordMp3()) {
+                    Mp3Recorder(this, audioSourceOverride)
+                } else {
+                    MediaRecorderWrapper(this, audioSourceOverride)
+                }
                 recorder?.setPreferredDevice(device)
+            } else {
+                recorder = if (recordMp3()) {
+                    Mp3Recorder(this)
+                } else {
+                    MediaRecorderWrapper(this)
+                }
             }
 
             if (isRPlus()) {
