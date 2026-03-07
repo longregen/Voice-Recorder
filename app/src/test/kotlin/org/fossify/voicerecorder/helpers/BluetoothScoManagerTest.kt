@@ -3,6 +3,7 @@ package org.fossify.voicerecorder.helpers
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -72,12 +73,28 @@ class BluetoothScoManagerTest {
     }
 
     @Test
+    fun `start sets audio mode to MODE_IN_COMMUNICATION`() {
+        assertEquals(AudioManager.MODE_NORMAL, audioManager.mode)
+        scoManager.start()
+        assertEquals(AudioManager.MODE_IN_COMMUNICATION, audioManager.mode)
+    }
+
+    @Test
     fun `stop deactivates and clears isActive`() {
         scoManager.start()
         assertTrue(scoManager.isActive)
 
         scoManager.stop()
         assertFalse(scoManager.isActive)
+    }
+
+    @Test
+    fun `stop restores previous audio mode`() {
+        assertEquals(AudioManager.MODE_NORMAL, audioManager.mode)
+        scoManager.start()
+        assertEquals(AudioManager.MODE_IN_COMMUNICATION, audioManager.mode)
+        scoManager.stop()
+        assertEquals(AudioManager.MODE_NORMAL, audioManager.mode)
     }
 
     @Test
