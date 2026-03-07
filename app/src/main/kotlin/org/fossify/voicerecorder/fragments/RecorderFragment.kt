@@ -178,7 +178,7 @@ class RecorderFragment(
             if (selectedAudioDeviceId != -1) {
                 putExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, selectedAudioDeviceId)
             }
-            context.startService(this)
+            context.startForegroundService(this)
         }
     }
 
