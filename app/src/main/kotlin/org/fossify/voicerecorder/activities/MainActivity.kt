@@ -79,7 +79,7 @@ class MainActivity : SimpleActivity() {
         if (config.recordAfterLaunch && !RecorderService.isRunning) {
             Intent(this@MainActivity, RecorderService::class.java).apply {
                 try {
-                    startService(this)
+                    startForegroundService(this)
                 } catch (ignored: Exception) {
                 }
             }

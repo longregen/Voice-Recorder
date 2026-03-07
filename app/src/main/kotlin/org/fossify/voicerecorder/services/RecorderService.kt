@@ -136,14 +136,14 @@ class RecorderService : Service() {
                 val fileUri = createDocumentUriUsingFirstParentTreeUri(recordingPath)
                 createSAFFileSdk30(recordingPath)
                 resultUri = fileUri
-                contentResolver.openFileDescriptor(fileUri, "w")!!
+                contentResolver.openFileDescriptor(fileUri, "rw")!!
                     .use { recorder?.setOutputFile(it) }
             } else if (isPathOnSD(recordingPath)) {
                 var document = getDocumentFile(recordingPath.getParentPath())
                 document = document?.createFile("", recordingPath.getFilenameFromPath())
                 check(document != null) { "Failed to create document on SD Card" }
                 resultUri = document.uri
-                contentResolver.openFileDescriptor(document.uri, "w")!!
+                contentResolver.openFileDescriptor(document.uri, "rw")!!
                     .use { recorder?.setOutputFile(it) }
             } else {
                 recorder?.setOutputFile(recordingPath)
@@ -152,16 +152,17 @@ class RecorderService : Service() {
                 )
             }
 
-            recorder?.prepare()
-            recorder?.start()
-            duration = 0
-            status = RECORDING_RUNNING
-            broadcastRecorderInfo()
             startForeground(
                 RECORDER_RUNNING_NOTIF_ID,
                 showNotification(),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             )
+
+            recorder?.prepare()
+            recorder?.start()
+            duration = 0
+            status = RECORDING_RUNNING
+            broadcastRecorderInfo()
 
             durationTimer = Timer()
             durationTimer.scheduleAtFixedRate(getDurationUpdateTask(), 1000, 1000)
