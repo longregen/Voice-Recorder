@@ -39,6 +39,7 @@ import org.fossify.voicerecorder.extensions.updateWidgets
 import org.fossify.voicerecorder.helpers.BluetoothScoManager
 import org.fossify.voicerecorder.helpers.CANCEL_RECORDING
 import org.fossify.voicerecorder.helpers.EXTENSION_MP3
+import org.fossify.voicerecorder.helpers.EXTRA_BT_OUTPUT_DEVICE_ID
 import org.fossify.voicerecorder.helpers.EXTRA_PREFERRED_AUDIO_DEVICE_ID
 import org.fossify.voicerecorder.helpers.GET_RECORDER_INFO
 import org.fossify.voicerecorder.helpers.RECORDER_RUNNING_NOTIF_ID
@@ -117,25 +118,34 @@ class RecorderService : Service() {
 
         try {
             val preferredDeviceId = intent.getIntExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, -1)
-            Log.d(TAG, "startRecording: preferredDeviceId=$preferredDeviceId")
+            val btOutputDeviceId = intent.getIntExtra(EXTRA_BT_OUTPUT_DEVICE_ID, -1)
+            Log.d(TAG, "startRecording: preferredDeviceId=$preferredDeviceId btOutputDeviceId=$btOutputDeviceId")
 
             if (preferredDeviceId != -1) {
                 val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 val scoManager = BluetoothScoManager(audioManager)
                 bluetoothScoManager = scoManager
-                scoManager.logAvailableDevices()
 
-                val device = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                val inputDevice = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
                     .firstOrNull { it.id == preferredDeviceId }
 
-                if (device != null && scoManager.isBluetoothDevice(device)) {
-                    Log.d(TAG, "startRecording: found BT device id=${device.id}, starting SCO and waiting for routing")
-                    scoManager.start(device) {
+                // Use the OUTPUT device for setCommunicationDevice (establishes the SCO link)
+                // and the INPUT device for setPreferredDevice on the recorder
+                val outputDevice = if (btOutputDeviceId != -1) {
+                    audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                        .firstOrNull { it.id == btOutputDeviceId }
+                } else {
+                    null
+                }
+
+                if (inputDevice != null && scoManager.isBluetoothDevice(inputDevice)) {
+                    Log.d(TAG, "startRecording: found BT input=${inputDevice.id} output=${outputDevice?.id}, starting SCO")
+                    scoManager.start(outputDevice ?: inputDevice) {
                         Log.d(TAG, "startRecording: BT routing ready, creating recorder")
                         try {
                             createAndStartRecorder(
                                 audioSourceOverride = MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                                preferredDevice = device
+                                preferredDevice = inputDevice
                             )
                         } catch (e: Exception) {
                             Log.e(TAG, "startRecording: failed after BT routing", e)
@@ -145,7 +155,7 @@ class RecorderService : Service() {
                     }
                     return
                 } else {
-                    Log.w(TAG, "startRecording: BT device not found or not BT (device=${device?.let { "id=${it.id} type=${it.type}" } ?: "null"}), falling back to default")
+                    Log.w(TAG, "startRecording: BT device not found or not BT (device=${inputDevice?.let { "id=${it.id} type=${it.type}" } ?: "null"}), falling back to default")
                 }
             }
 

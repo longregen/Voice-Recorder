@@ -14,6 +14,7 @@ import android.os.Looper
 import android.util.AttributeSet
 import android.util.Log
 import android.view.View
+
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import org.fossify.commons.activities.BaseSimpleActivity
@@ -37,6 +38,7 @@ import org.fossify.voicerecorder.extensions.ensureStoragePermission
 import org.fossify.voicerecorder.extensions.setKeepScreenAwake
 import org.fossify.voicerecorder.helpers.BluetoothScoManager
 import org.fossify.voicerecorder.helpers.CANCEL_RECORDING
+import org.fossify.voicerecorder.helpers.EXTRA_BT_OUTPUT_DEVICE_ID
 import org.fossify.voicerecorder.helpers.EXTRA_PREFERRED_AUDIO_DEVICE_ID
 import org.fossify.voicerecorder.helpers.GET_RECORDER_INFO
 import org.fossify.voicerecorder.helpers.RECORDING_PAUSED
@@ -208,10 +210,14 @@ class RecorderFragment(
     private fun startRecording() {
         Intent(context, RecorderService::class.java).apply {
             if (bluetoothSelected) {
-                val device = findBluetoothInputDevice()
-                Log.d(TAG, "startRecording: bluetoothSelected=true, device=${device?.let { "id=${it.id} type=${it.type}" } ?: "null"}")
-                if (device != null) {
-                    putExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, device.id)
+                val inputDevice = findBluetoothInputDevice()
+                val outputDevice = findBluetoothOutputDevice()
+                Log.d(TAG, "startRecording: bluetoothSelected=true, inputDevice=${inputDevice?.let { "id=${it.id} type=${it.type}" } ?: "null"}, outputDevice=${outputDevice?.let { "id=${it.id} type=${it.type}" } ?: "null"}")
+                if (inputDevice != null) {
+                    putExtra(EXTRA_PREFERRED_AUDIO_DEVICE_ID, inputDevice.id)
+                }
+                if (outputDevice != null) {
+                    putExtra(EXTRA_BT_OUTPUT_DEVICE_ID, outputDevice.id)
                 }
             } else {
                 Log.d(TAG, "startRecording: using default microphone")
@@ -241,18 +247,15 @@ class RecorderFragment(
     }
 
     private fun refreshBluetoothVisibility() {
-        val hasPerm = hasBluetoothPermission()
         val btDevice = findBluetoothInputDevice()
-        val hasBluetooth = hasPerm && btDevice != null
-        Log.d(TAG, "refreshBluetoothVisibility: hasPerm=$hasPerm btDevice=${btDevice?.let { "id=${it.id} type=${it.type} name=${it.productName}" } ?: "null"} -> visible=$hasBluetooth")
+        val hasBtDevice = btDevice != null
+        Log.d(TAG, "refreshBluetoothVisibility: hasPerm=${hasBluetoothPermission()} btDevice=${btDevice?.let { "id=${it.id} type=${it.type} name=${it.productName}" } ?: "null"} visible=$hasBtDevice")
 
-        // Also log all available devices for debugging
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        BluetoothScoManager(audioManager).logAvailableDevices()
-
+        // Show tab whenever a BT device is detected, even without permission.
+        // Permission will be requested when the user taps the Bluetooth tab.
         binding.microphoneSelectorHolder.visibility =
-            if (hasBluetooth) View.VISIBLE else View.GONE
-        if (!hasBluetooth && bluetoothSelected) {
+            if (hasBtDevice) View.VISIBLE else View.GONE
+        if (!hasBtDevice && bluetoothSelected) {
             bluetoothSelected = false
             updateTabColors()
         }
@@ -266,10 +269,20 @@ class RecorderFragment(
     }
 
     private fun findBluetoothInputDevice(): AudioDeviceInfo? {
+        // getDevices does not require BLUETOOTH_CONNECT permission
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val scoManager = BluetoothScoManager(audioManager)
         return audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
             .firstOrNull { scoManager.isBluetoothDevice(it) }
+    }
+
+    private fun findBluetoothOutputDevice(): AudioDeviceInfo? {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val scoManager = BluetoothScoManager(audioManager)
+        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+            ?: audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                .firstOrNull { scoManager.isBluetoothDevice(it) }
     }
 
     @SuppressLint("InlinedApi")

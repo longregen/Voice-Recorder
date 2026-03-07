@@ -19,6 +19,8 @@ class BluetoothScoManager(private val audioManager: AudioManager) {
 
     private var previousAudioMode: Int = AudioManager.MODE_NORMAL
     private var deviceChangedListener: AudioManager.OnCommunicationDeviceChangedListener? = null
+    private var timeoutHandler: Handler? = null
+    private var timeoutRunnable: Runnable? = null
 
     fun isBluetoothDevice(device: AudioDeviceInfo): Boolean {
         val isBt = device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
@@ -75,19 +77,25 @@ class BluetoothScoManager(private val audioManager: AudioManager) {
             if (device != null) {
                 Log.d(TAG, "start: setCommunicationDevice id=${device.id} type=${device.type} name=${device.productName}")
 
-                // Register listener to know when routing is complete
-                if (onReady != null) {
+                val result = audioManager.setCommunicationDevice(device)
+                Log.d(TAG, "start: setCommunicationDevice returned $result")
+
+                if (result && onReady != null) {
+                    // setCommunicationDevice succeeded — wait for routing confirmation
                     val handler = Handler(Looper.getMainLooper())
-                    val timeoutRunnable = Runnable {
+                    val timeout = Runnable {
                         Log.w(TAG, "start: communication device change timed out after ${COMMUNICATION_DEVICE_TIMEOUT_MS}ms, proceeding anyway")
+                        cancelTimeout()
                         removeDeviceChangedListener()
                         onReady()
                     }
+                    timeoutHandler = handler
+                    timeoutRunnable = timeout
 
                     val listener = AudioManager.OnCommunicationDeviceChangedListener { newDevice ->
                         Log.d(TAG, "start: communication device changed to: " +
                             "id=${newDevice?.id} type=${newDevice?.type} name=${newDevice?.productName}")
-                        handler.removeCallbacks(timeoutRunnable)
+                        cancelTimeout()
                         removeDeviceChangedListener()
                         onReady()
                     }
@@ -95,14 +103,9 @@ class BluetoothScoManager(private val audioManager: AudioManager) {
                     audioManager.addOnCommunicationDeviceChangedListener(
                         { it.run() }, listener
                     )
-                    handler.postDelayed(timeoutRunnable, COMMUNICATION_DEVICE_TIMEOUT_MS)
-                }
-
-                val result = audioManager.setCommunicationDevice(device)
-                Log.d(TAG, "start: setCommunicationDevice returned $result")
-                if (!result) {
-                    Log.e(TAG, "start: setCommunicationDevice FAILED")
-                    removeDeviceChangedListener()
+                    handler.postDelayed(timeout, COMMUNICATION_DEVICE_TIMEOUT_MS)
+                } else if (!result) {
+                    Log.e(TAG, "start: setCommunicationDevice FAILED, proceeding without SCO routing")
                     onReady?.invoke()
                 }
             } else {
@@ -123,6 +126,7 @@ class BluetoothScoManager(private val audioManager: AudioManager) {
     fun stop() {
         if (!isActive) return
         Log.d(TAG, "stop: cleaning up bluetooth audio routing")
+        cancelTimeout()
         removeDeviceChangedListener()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             audioManager.clearCommunicationDevice()
@@ -135,6 +139,12 @@ class BluetoothScoManager(private val audioManager: AudioManager) {
         audioManager.mode = previousAudioMode
         Log.d(TAG, "stop: restored audioMode=$previousAudioMode")
         isActive = false
+    }
+
+    private fun cancelTimeout() {
+        timeoutRunnable?.let { timeoutHandler?.removeCallbacks(it) }
+        timeoutRunnable = null
+        timeoutHandler = null
     }
 
     private fun removeDeviceChangedListener() {
