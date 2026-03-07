@@ -8,7 +8,7 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import org.fossify.voicerecorder.extensions.config
 
-class MediaRecorderWrapper(val context: Context) : Recorder {
+class MediaRecorderWrapper(val context: Context, audioSourceOverride: Int? = null) : Recorder {
 
     companion object {
         private const val TAG = "MediaRecorderWrapper"
@@ -17,7 +17,7 @@ class MediaRecorderWrapper(val context: Context) : Recorder {
     private var outputParcelFileDescriptor: ParcelFileDescriptor? = null
 
     private var recorder = MediaRecorder(context).apply {
-        setAudioSource(context.config.microphoneMode)
+        setAudioSource(audioSourceOverride ?: context.config.microphoneMode)
         setOutputFormat(context.config.getOutputFormat())
         setAudioEncoder(context.config.getAudioEncoder())
         setAudioEncodingBitRate(context.config.bitrate)
