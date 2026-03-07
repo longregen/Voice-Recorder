@@ -9,6 +9,8 @@ class BluetoothScoManager(private val audioManager: AudioManager) {
     var isActive: Boolean = false
         private set
 
+    private var previousAudioMode: Int = AudioManager.MODE_NORMAL
+
     fun isBluetoothDevice(device: AudioDeviceInfo): Boolean {
         return device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
             device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
@@ -18,6 +20,8 @@ class BluetoothScoManager(private val audioManager: AudioManager) {
 
     fun start(device: AudioDeviceInfo? = null) {
         if (isActive) return
+        previousAudioMode = audioManager.mode
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             device?.let { audioManager.setCommunicationDevice(it) }
         } else {
@@ -39,6 +43,7 @@ class BluetoothScoManager(private val audioManager: AudioManager) {
             @Suppress("DEPRECATION")
             audioManager.stopBluetoothSco()
         }
+        audioManager.mode = previousAudioMode
         isActive = false
     }
 }
