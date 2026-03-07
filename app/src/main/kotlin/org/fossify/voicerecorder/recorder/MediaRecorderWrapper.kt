@@ -14,8 +14,9 @@ class MediaRecorderWrapper(val context: Context) : Recorder {
         private const val TAG = "MediaRecorderWrapper"
     }
 
-    @Suppress("DEPRECATION")
-    private var recorder = MediaRecorder().apply {
+    private var outputParcelFileDescriptor: ParcelFileDescriptor? = null
+
+    private var recorder = MediaRecorder(context).apply {
         setAudioSource(context.config.microphoneMode)
         setOutputFormat(context.config.getOutputFormat())
         setAudioEncoder(context.config.getAudioEncoder())
@@ -34,7 +35,9 @@ class MediaRecorderWrapper(val context: Context) : Recorder {
     }
 
     override fun setOutputFile(parcelFileDescriptor: ParcelFileDescriptor) {
+        outputParcelFileDescriptor?.close()
         val pFD = ParcelFileDescriptor.dup(parcelFileDescriptor.fileDescriptor)
+        outputParcelFileDescriptor = pFD
         recorder.setOutputFile(pFD.fileDescriptor)
     }
 
@@ -66,6 +69,8 @@ class MediaRecorderWrapper(val context: Context) : Recorder {
 
     override fun release() {
         recorder.release()
+        outputParcelFileDescriptor?.close()
+        outputParcelFileDescriptor = null
     }
 
     override fun getMaxAmplitude(): Int {
